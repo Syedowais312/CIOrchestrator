@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sentinel CI Console</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">Sentinel CI</p>
+          <h1>Incident Console</h1>
+          <p>Persistent diagnosis history for failed GitHub Actions runs.</p>
+        </div>
+
+        <section class="sidebar-panel">
+          <div class="sidebar-head">
+            <h2>Trigger</h2>
+            <span id="job-status" class="badge idle">idle</span>
+          </div>
+          <form id="diagnosis-form" class="control-form">
+            <label>
+              Repository
+              <input id="repo" name="repo" placeholder="owner/repo" required />
+            </label>
+            <label>
+              Run ID
+              <input id="run_id" name="run_id" placeholder="25904335126" required />
+            </label>
+            <label>
+              Branch
+              <input id="ref" name="ref" value="main" required />
+            </label>
+            <button type="submit" id="submit-btn">Inspect Failure</button>
+          </form>
+        </section>
+
+        <section class="sidebar-panel history-panel">
+          <div class="sidebar-head">
+            <h2>Recent Runs</h2>
+            <button type="button" id="refresh-history" class="ghost-button">Refresh</button>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
+      </aside>
+
+      <main class="main-pane">
+        <header class="hero">
+          <div>
+            <p class="eyebrow">Active Incident</p>
+            <h2 id="hero-title">No diagnosis selected</h2>
+            <p id="hero-subtitle">Pick a run from history or trigger a new diagnosis.</p>
+          </div>
+          <div class="hero-chips">
+            <span id="hero-source" class="chip">source: n/a</span>
+            <span id="hero-branch" class="chip">branch: n/a</span>
+            <span id="hero-commit" class="chip">commit: n/a</span>
+          </div>
+        </header>
+
+        <section class="top-grid">
+          <article class="card status-card">
+            <span class="card-label">Diagnosis</span>
+            <strong id="summary-diagnosis">Not started</strong>
+            <p id="job-meta">Waiting for a failed run.</p>
+          </article>
+          <article class="card status-card">
+            <span class="card-label">Failure Class</span>
+            <strong id="classification-brief">Unknown</strong>
+            <p id="classification-summary">No classification yet.</p>
+          </article>
+          <article class="card status-card">
+            <span class="card-label">Repo Profile</span>
+            <strong id="repo-language">Unknown</strong>
+            <p id="repo-framework">Framework not detected yet.</p>
+          </article>
+          <article class="card status-card">
+            <span class="card-label">Workflow</span>
+            <strong id="workflow-name">Unknown</strong>
+            <p id="workflow-state">No workflow metadata loaded.</p>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <section class="card large-card">
+            <div class="section-head">
+              <h3>Root Cause</h3>
+              <span class="pill critical">Primary</span>
+            </div>
+            <pre id="root_cause">No result yet.</pre>
+          </section>
+
+          <section class="card large-card">
+            <div class="section-head">
+              <h3>Proposed Fix</h3>
+              <span class="pill">Action</span>
+            </div>
+            <pre id="proposed_fix">No result yet.</pre>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h3>Validation Plan</h3>
+              <span class="pill">Verify</span>
+            </div>
+            <pre id="validation_plan">No result yet.</pre>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h3>Log Analysis</h3>
+              <span class="pill">Evidence</span>
+            </div>
+            <pre id="log_analysis">No result yet.</pre>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h3>Agent Timeline</h3>
+              <span class="pill">Live</span>
+            </div>
+            <div id="events" class="timeline"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h3>Repository Context</h3>
+              <span class="pill">Files</span>
+            </div>
+            <ul id="key-files" class="file-list">
+              <li>No repository files loaded yet.</li>
+            </ul>
+            <pre id="tree-sample">[]</pre>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
