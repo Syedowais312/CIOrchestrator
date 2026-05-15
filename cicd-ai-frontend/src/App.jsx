@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
+  Braces,
   Bug,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   ChevronsRight,
@@ -31,6 +34,13 @@ import {
   XCircle,
   Zap,
   ChevronUp,
+  ListChecks,
+  BarChart3,
+  FileSearch,
+  Wrench,
+  ScrollText,
+  Lightbulb,
+  Siren,
 } from "lucide-react";
 
 const API = {
@@ -319,6 +329,236 @@ function Timeline({ events }) {
   );
 }
 
+function SeverityGauge({ classification }) {
+  const severityMap = {
+    "BUILD_ERROR": { level: 5, label: "Critical", color: "from-red-500 to-red-600" },
+    "DEPLOYMENT_FAILURE": { level: 5, label: "Critical", color: "from-red-500 to-red-600" },
+    "INFRASTRUCTURE_FAILURE": { level: 4, label: "High", color: "from-orange-500 to-orange-600" },
+    "TEST_FAILURE": { level: 3, label: "Medium", color: "from-yellow-500 to-yellow-600" },
+    "DEPENDENCY_CONFLICT": { level: 3, label: "Medium", color: "from-yellow-500 to-yellow-600" },
+    "ENVIRONMENT_MISMATCH": { level: 3, label: "Medium", color: "from-yellow-500 to-yellow-600" },
+    "CONFIGURATION_ERROR": { level: 2, label: "Low", color: "from-blue-500 to-blue-600" },
+    "VERSION_INCOMPATIBILITY": { level: 2, label: "Low", color: "from-blue-500 to-blue-600" },
+  };
+  const sev = severityMap[classification] || { level: 1, label: "Unknown", color: "from-gray-500 to-gray-600" };
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+        <div
+          className={classNames("h-full rounded-full bg-gradient-to-r transition-all duration-700", sev.color)}
+          style={{ width: `${(sev.level / 5) * 100}%` }}
+        />
+      </div>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{sev.label}</span>
+    </div>
+  );
+}
+
+function SmartText({ text }) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements = [];
+  let inCodeBlock = false;
+  let codeBlockLines = [];
+
+  const flushCodeBlock = (key) => {
+    if (codeBlockLines.length > 0) {
+      elements.push(
+        <div key={key} className="bg-black/30 rounded-lg p-3 font-mono text-[12px] text-green-300/80 leading-relaxed whitespace-pre-wrap mb-3">
+          {codeBlockLines.join("\n")}
+        </div>,
+      );
+      codeBlockLines = [];
+    }
+  };
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      if (inCodeBlock) {
+        flushCodeBlock(`code-${i}`);
+        inCodeBlock = false;
+      } else {
+        flushCodeBlock(`code-${i}-pre`);
+        inCodeBlock = true;
+      }
+      return;
+    }
+
+    if (inCodeBlock) {
+      codeBlockLines.push(line);
+      return;
+    }
+
+    const isHeader = /^[A-Z][A-Z\s]+[:\s]$/.test(trimmed) || /^#{1,3}\s/.test(trimmed);
+    const isListItem = /^[\d]+[.)]\s/.test(trimmed) || /^[-*]\s/.test(trimmed);
+    const isError = /error|failed|failure|crash|exception/i.test(trimmed) && trimmed.length < 120;
+    const isCommand = /^[$>]\s/.test(trimmed) || trimmed.startsWith("npm ") || trimmed.startsWith("pip ") || trimmed.startsWith("docker ");
+
+    if (isHeader) {
+      const clean = trimmed.replace(/^#+\s*/, "").replace(/:$/, "");
+      elements.push(
+        <p key={i} className="text-xs font-semibold text-white/70 uppercase tracking-wider mt-4 mb-2 first:mt-0">
+          {clean}
+        </p>,
+      );
+    } else if (isListItem) {
+      const content = trimmed.replace(/^[\d]+[.)]\s/, "").replace(/^[-*]\s/, "");
+      elements.push(
+        <div key={i} className="flex items-start gap-2 mb-1.5">
+          <div className="mt-[3px] w-1.5 h-1.5 rounded-full bg-cyan-400/40 flex-shrink-0" />
+          <span className="text-sm text-white/60 leading-relaxed">{content}</span>
+        </div>,
+      );
+    } else if (isError) {
+      elements.push(
+        <div key={i} className="flex items-center gap-2 mb-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-400/60 flex-shrink-0" />
+          <span className="text-sm text-red-300/80 font-medium">{trimmed}</span>
+        </div>,
+      );
+    } else if (isCommand) {
+      const cmd = trimmed.replace(/^[$>]\s*/, "");
+      elements.push(
+        <div key={i} className="bg-black/20 rounded px-3 py-1.5 mb-1.5 font-mono text-xs text-amber-300/70 flex items-center gap-2">
+          <span className="text-amber-400/50">$</span>
+          {cmd}
+        </div>,
+      );
+    } else if (trimmed === "") {
+      if (i > 0 && lines[i - 1]?.trim() !== "") {
+        elements.push(<div key={i} className="h-2" />);
+      }
+    } else {
+      elements.push(
+        <p key={i} className="text-sm text-white/60 leading-relaxed mb-1">{trimmed}</p>,
+      );
+    }
+  });
+
+  flushCodeBlock("code-end");
+
+  if (elements.length === 0 && text) {
+    return <p className="text-sm text-white/60 leading-relaxed">{text}</p>;
+  }
+
+  return <>{elements}</>;
+}
+
+function AnalysisCard({ rootCause, proposedFix, validationPlan, logAnalysis, classification }) {
+  const [activeTab, setActiveTab] = useState("root-cause");
+
+  const tabs = [
+    { id: "root-cause", label: "Root Cause", icon: Siren, color: "text-red-400" },
+    { id: "fix", label: "Fix", icon: Wrench, color: "text-emerald-400" },
+    { id: "validation", label: "Validation", icon: ListChecks, color: "text-blue-400" },
+    { id: "logs", label: "Logs", icon: ScrollText, color: "text-amber-400" },
+  ];
+
+  return (
+    <article className="glass-panel animate-fade-in overflow-hidden">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-0">
+        <div className="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center flex-shrink-0">
+          <FileSearch className="w-3.5 h-3.5" />
+        </div>
+        <h3 className="text-sm font-semibold text-white/80 flex-1">Deep Analysis</h3>
+        <SeverityGauge classification={classification} />
+      </div>
+
+      <div className="flex gap-0 px-5 mt-3 border-b border-white/[0.06]">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={classNames(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-200 border-b-2 -mb-[1px]",
+                isActive
+                  ? "border-cyan-400 text-white"
+                  : "border-transparent text-white/30 hover:text-white/50",
+              )}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-5">
+        {activeTab === "root-cause" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-red-500/10 text-red-400 flex items-center justify-center">
+                <AlertTriangle className="w-3 h-3" />
+              </div>
+              <span className="text-xs font-semibold text-red-300 uppercase tracking-wider">Failure Analysis</span>
+            </div>
+            <div className="pl-7 border-l-2 border-red-500/20">
+              <SmartText text={rootCause} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "fix" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <Zap className="w-3 h-3" />
+              </div>
+              <span className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Suggested Fix</span>
+            </div>
+            <div className="pl-7 border-l-2 border-emerald-500/20">
+              <SmartText text={proposedFix} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "validation" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                <CheckSquare className="w-3 h-3" />
+              </div>
+              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Validation Steps</span>
+            </div>
+            <div className="pl-7 border-l-2 border-blue-500/20">
+              <SmartText text={validationPlan} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "logs" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <Terminal className="w-3 h-3" />
+              </div>
+              <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Log Analysis</span>
+            </div>
+            <div className="bg-[#0d1117] rounded-lg border border-white/[0.06] overflow-hidden">
+              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/[0.06] bg-black/20">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                <span className="ml-2 text-[10px] text-white/20 font-mono">terminal — log output</span>
+              </div>
+              <div className="p-3 font-mono text-[12px] text-green-300/80 leading-relaxed whitespace-pre-wrap max-h-96 overflow-auto">
+                {logAnalysis}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function App() {
   const [history, setHistory] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -357,6 +597,7 @@ function App() {
   async function fetchJson(url, options) {
     const response = await fetch(url, options);
     const data = await response.json();
+    if (data?.error) throw new Error(data.error);
     if (!response.ok) throw new Error(data.error || "Request failed");
     return data;
   }
@@ -420,9 +661,7 @@ function App() {
   }
 
   function openPRModal() {
-    if (!selectedId || diagnosis?.status !== "completed") {
-      return;
-    }
+    if (!selectedId || diagnosis?.status !== "completed") return;
     setShowPRModal(true);
     setPrPreview(null);
     setPrActionError("");
@@ -444,6 +683,7 @@ function App() {
       }));
     } catch (previewError) {
       setError(previewError.message);
+      setPrActionError(previewError.message);
     } finally {
       setIsPreviewingPR(false);
     }
@@ -550,33 +790,6 @@ function App() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [selectedId]);
-
-  const DetailCard = ({ title, icon: Icon, children, highlight, meta }) => (
-    <article
-      className={classNames(
-        "glass-panel p-5 animate-fade-in",
-        highlight && "glass-card-highlight",
-      )}
-    >
-      <div className="flex items-center gap-2.5 mb-3">
-        {Icon && (
-          <div
-            className={classNames(
-              "w-7 h-7 rounded-lg flex items-center justify-center",
-              highlight
-                ? "bg-cyan-500/10 text-cyan-400"
-                : "bg-white/[0.04] text-white/40",
-            )}
-          >
-            <Icon className="w-3.5 h-3.5" />
-          </div>
-        )}
-        <h3 className="text-sm font-semibold text-white/80">{title}</h3>
-        {meta && <span className="ml-auto text-[10px] text-white/20">{meta}</span>}
-      </div>
-      <div className="text-sm text-white/60 leading-relaxed">{children}</div>
-    </article>
-  );
 
   const StatCard = ({ label, value, sub, icon: Icon, color }) => (
     <article className="glass-panel p-4 animate-fade-in">
@@ -803,28 +1016,15 @@ function App() {
             </section>
 
             <section className="grid grid-cols-2 gap-3">
-              <DetailCard title="Analysis" icon={AlertTriangle} highlight meta="Primary">
-                <div className="space-y-5">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-400/60 mb-2">Root Cause</p>
-                    <p className="leading-relaxed">{summary.rootCause}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-400/60 mb-2">Proposed Fix</p>
-                    <p className="leading-relaxed">{summary.proposedFix}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-400/60 mb-2">Validation Plan</p>
-                    <p className="leading-relaxed">{summary.validationPlan}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-400/60 mb-2">Log Analysis</p>
-                    <div className="bg-black/30 rounded-lg p-3 font-mono text-[12px] text-green-300/80 leading-relaxed whitespace-pre-wrap">
-                      {summary.logAnalysis}
-                    </div>
-                  </div>
-                </div>
-              </DetailCard>
+              <div className="col-span-2">
+                <AnalysisCard
+                  rootCause={summary.rootCause}
+                  proposedFix={summary.proposedFix}
+                  validationPlan={summary.validationPlan}
+                  logAnalysis={summary.logAnalysis}
+                  classification={summary.classification}
+                />
+              </div>
 
               <DetailCard title="Agent Timeline" icon={Layers} meta="Live + Stored">
                 <Timeline events={events} />
@@ -1032,6 +1232,35 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function DetailCard({ title, icon: Icon, children, highlight, meta }) {
+  return (
+    <article
+      className={classNames(
+        "glass-panel p-5 animate-fade-in",
+        highlight && "glass-card-highlight",
+      )}
+    >
+      <div className="flex items-center gap-2.5 mb-3">
+        {Icon && (
+          <div
+            className={classNames(
+              "w-7 h-7 rounded-lg flex items-center justify-center",
+              highlight
+                ? "bg-cyan-500/10 text-cyan-400"
+                : "bg-white/[0.04] text-white/40",
+            )}
+          >
+            <Icon className="w-3.5 h-3.5" />
+          </div>
+        )}
+        <h3 className="text-sm font-semibold text-white/80">{title}</h3>
+        {meta && <span className="ml-auto text-[10px] text-white/20">{meta}</span>}
+      </div>
+      <div className="text-sm text-white/60 leading-relaxed">{children}</div>
+    </article>
   );
 }
 

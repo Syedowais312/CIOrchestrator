@@ -6,6 +6,8 @@ load_dotenv(override=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+VERCEL_TOKEN = os.getenv("VERCEL_TOKEN", "")
+VERCEL_WEBHOOK_SECRET = os.getenv("VERCEL_WEBHOOK_SECRET", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 GITHUB_API_BASE = "https://api.github.com"

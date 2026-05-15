@@ -1,7 +1,8 @@
 import asyncio
+import uuid
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +15,13 @@ from storage import get_diagnosis as load_diagnosis
 from storage import get_events as load_events
 from storage import get_latest_diagnosis as load_latest_diagnosis
 from storage import init_db, list_diagnoses, upsert_diagnosis
+from vercel_client import (
+    fetch_vercel_deployment,
+    fetch_vercel_deployment_events,
+    infer_repo_from_vercel_deployment,
+    summarize_vercel_events,
+    verify_vercel_signature,
+)
 
 app = FastAPI(title="CI/CD AI Backend", version="0.1.0")
 diagnosis_store: dict[str, DiagnosisRecord] = {}
@@ -117,6 +125,90 @@ async def receive_webhook(payload: WebhookPayload) -> dict[str, str]:
     asyncio.create_task(run_diagnosis(request_payload))
 
     return {"status": "accepted", "diagnosis_id": diagnosis_id}
+
+
+@app.post("/api/vercel/webhook")
+async def receive_vercel_webhook(request: Request) -> dict[str, str]:
+    raw_body = await request.body()
+    signature = request.headers.get("x-vercel-signature")
+    if not verify_vercel_signature(raw_body, signature):
+        return {"error": "Invalid Vercel webhook signature"}
+
+    event = await request.json()
+    event_type = event.get("type", "")
+    payload = event.get("payload", {})
+
+    if event_type not in {"deployment.error", "deployment.canceled"}:
+        return {"status": "ignored", "event_type": event_type}
+
+    deployment_payload = payload.get("deployment", {})
+    deployment_id = deployment_payload.get("id")
+    team_info = payload.get("team", {})
+    team_id = team_info.get("id")
+    if not deployment_id:
+        return {"error": "Missing deployment id in Vercel webhook payload"}
+
+    diagnosis_id = f"vercel-{deployment_id}"
+    global latest_diagnosis_id
+    latest_diagnosis_id = diagnosis_id
+
+    try:
+        deployment = await fetch_vercel_deployment(deployment_id, team_id=team_id)
+        events = await fetch_vercel_deployment_events(deployment_id, team_id=team_id)
+    except Exception as exc:
+        return {"error": f"Failed to fetch Vercel deployment details: {exc}"}
+
+    repo, default_branch = infer_repo_from_vercel_deployment(deployment)
+    deployment_logs = summarize_vercel_events(events)
+    if not deployment_logs:
+        deployment_logs = f"Vercel deployment {deployment_id} failed, but no build event text was returned."
+
+    diagnosis_store[diagnosis_id] = DiagnosisRecord(
+        diagnosis_id=diagnosis_id,
+        status="running",
+        source="vercel",
+        repo=repo or deployment.get("name") or payload.get("project", {}).get("name") or "vercel-project",
+        result=None,
+    )
+    upsert_diagnosis(
+        diagnosis_id,
+        "running",
+        "vercel",
+        repo or deployment.get("name") or "vercel-project",
+        None,
+    )
+
+    webhook_payload = WebhookPayload(
+        source="vercel",
+        repo=repo or deployment.get("name") or "vercel-project",
+        run_id=None,
+        commit_sha=(deployment.get("meta") or {}).get("githubCommitSha"),
+        ref=(deployment.get("meta") or {}).get("githubCommitRef") or default_branch or "main",
+        deployment_provider="vercel",
+        deployment_id=deployment_id,
+        deployment_status=deployment.get("readyState") or "ERROR",
+        deployment_logs=deployment_logs,
+        metadata={
+            "diagnosis_id": diagnosis_id,
+            "vercel_event_type": event_type,
+            "vercel_project_id": deployment.get("projectId") or payload.get("projectId"),
+            "vercel_team_id": team_id,
+        },
+    )
+
+    await publish(
+        diagnosis_id,
+        "system",
+        "Diagnosis queued",
+        {
+            "repo": webhook_payload.repo,
+            "source": "vercel",
+            "status": "running",
+            "deployment_id": deployment_id,
+        },
+    )
+    asyncio.create_task(run_diagnosis(webhook_payload))
+    return {"status": "accepted", "diagnosis_id": diagnosis_id, "event_type": event_type}
 
 
 @app.get("/api/diagnosis/{diagnosis_id}")

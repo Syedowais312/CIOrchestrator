@@ -28,6 +28,8 @@ async def orchestrate(payload: dict[str, Any], publish) -> dict[str, Any]:
     await publish(diagnosis_id, "githubCIAgent", "Fetching CI logs")
     if context.get("run_id"):
         context["ci_logs"] = await fetch_github_logs(context["repo"], context["run_id"])
+    elif context.get("source") == "vercel" and context.get("deployment_logs"):
+        context["ci_logs"] = context["deployment_logs"]
     else:
         context["ci_logs"] = "No run_id provided. CI logs could not be fetched."
 
